@@ -1,6 +1,7 @@
 'use strict';
 
 const rooms = require('../../rooms.js');
+const { traceBattle } = require('../../diagnostics/battle-network');
 const { sendRoomUserPackets, buildMemberUserCtx } = require('./room-user.sender');
 const { broadcastRoomListChange, sendFullRoomList } = require('./room-list.sender');
 
@@ -17,6 +18,7 @@ function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
 
     const leaverMember = room.members.get(accountId);
     const leaverClient = leaverMember ? leaverMember.client : null;
+    traceBattle('room-member-removed', leaverClient, { removedAccount: accountId, kickout });
     const wasHost = room.hostAccountId === accountId;
     const wasPlaying = room.state === 'playing';
     const remainingMembers = Array.from(room.members.values()).filter((m) => m.accountId !== accountId);

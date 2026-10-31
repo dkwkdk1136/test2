@@ -7,6 +7,7 @@ const rooms = require('../rooms.js');
 const whitelist = require('../config/whitelist.js');
 const serverConfig = require('../config/server');
 const { resolveGameHost, peerAddressProblem } = require('../config/game-hosts');
+const { traceBattle } = require('../diagnostics/battle-network');
 
 function catalogCategoryType(row) {
     const category = Number(row.category_type) || 2;
@@ -31,6 +32,8 @@ function sendReadySuccessAndBeginRound(client, sourceTag) {
         respBody.writeUint16LE(0x0000, 0);
         respBody.writeUint32LE(0x0000, 2);
         client.send(msg);
+        // Server notification, not proof that the peer-to-peer game connection works.
+        traceBattle('ready-success-sent', client, { source: sourceTag });
         console.log(`[ZDispatchWaiting] >> Sent 0x00420116 after ${sourceTag}`);
     }
 }
@@ -129,6 +132,11 @@ class ZCommunityDispatch
 
             const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
             const room = rooms.getRoomByAccount(accountId);
+            traceBattle('ready-result', client, {
+                bytes: body.length,
+                result: body.length >= 6 ? `0x${body.readUInt32LE(2).toString(16)}` : null,
+                reportedPort: body.length >= 8 ? body.readUInt16LE(6) : null,
+            });
             // A guest can report a failed ClientTravel after receiving the host
             // endpoint. Do not turn that failure into another success response.
             if (room && accountId !== room.hostAccountId) {
@@ -169,6 +177,7 @@ class ZCommunityDispatch
                                 return true;
                             }
                             room.battleEndpoint = endpoint;
+                            traceBattle('host-endpoint-selected', client, { observed: endpoint.observedAddress, reportedPort: port, source: endpoint.source });
                             console.log(`[battle-network] host-ready room=${room.id} account=${accountId} observed=${endpoint.observedAddress} reportedPort=${port} advertised=${endpoint.address}:${endpoint.port} source=${endpoint.source}; forward the advertised game port to this host's listen port (not the Node lobby port)`);
                             const { sendReadyHostSnToRoomMember } = require('./gate.game.dispatch.js');
                             const mapCacheKey = Number(room.mapId) || 58;
@@ -176,6 +185,7 @@ class ZCommunityDispatch
                                 if (member.accountId === room.hostAccountId) continue;
                                 if (!member.client) continue;
                                 sendReadyHostSnToRoomMember(member.client, endpoint.address, endpoint.port, mapCacheKey);
+                                traceBattle('host-endpoint-sent', member.client, { target: `${endpoint.address}:${endpoint.port}` });
                                 console.log(`[battle-network] peer-connect room=${room.id} account=${member.accountId} target=${endpoint.address}:${endpoint.port}`);
 
                                 sendReadySuccessAndBeginRound(member.client, '0x00420114 (non-host, after Ready_Host_SN)');

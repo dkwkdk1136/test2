@@ -1,6 +1,6 @@
 {
   "name": "metalrage-server-emu",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Metal Rage Online server emulator",
   "main": "server.js",
   "scripts": {

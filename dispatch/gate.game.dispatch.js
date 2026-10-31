@@ -17,6 +17,7 @@ const { leaveRoomAndNotify } = require('./room/room-leave');
 const whitelist = require('../config/whitelist.js');
 const serverConfig = require('../config/server');
 const { resolveGameHost, peerAddressProblem } = require('../config/game-hosts');
+const { traceBattle } = require('../diagnostics/battle-network');
 
 const { MAP_IDS_PVP } = require('./map-info.sender');
 
@@ -122,6 +123,7 @@ function sendOkSa(client, type, tag)
 
 function sendReadyHostSq(client)
 {
+    traceBattle('host-listen-request', client);
     const [msg, respBody] = getExactMessageBuffer(0x00420113, 0x06);
     respBody.writeUint16LE(0, 0x00);
     respBody.writeUint32LE(0, 0x02);
@@ -198,6 +200,7 @@ function sendReadyHostSnToRoomMember(targetClient, ip, port, mapCacheKey)
 
 function sendRoomGameWaitSn(client, tag)
 {
+    traceBattle('loading-request', client, { stage: tag });
     const [msg] = getExactMessageBuffer(0x00420111, 0x00);
     client.send(msg);
     console.log(`[ZGateGameDispatch] >> Sent Game_Wait_SN 0x00420111 [${tag}]`);
@@ -324,7 +327,8 @@ function sendGameInfoSn(client, tag)
 
 function sendRoomGameWaitSnBroadcast(room, tag)
 {
-    rooms.sendAll(room.id, () => {
+    rooms.sendAll(room.id, (client) => {
+        traceBattle('loading-request', client, { stage: tag });
         const [msg] = getExactMessageBuffer(0x00420111, 0x00);
         return msg;
     });
@@ -1081,6 +1085,7 @@ class ZGateGameDispatch
                     if (roomForStart) {
                         roomForStart.state = 'playing';
                         roomForStart.battleEndpoint = null;
+                        roomForStart.battleStartedAt = Date.now();
                         for (const member of roomForStart.members.values()) {
                             if (member.client) member.client.gameStarted_ = true;
                         }
@@ -1102,6 +1107,7 @@ class ZGateGameDispatch
                     roomForBattleBroadcast.battleStartGen = (roomForBattleBroadcast.battleStartGen || 0) + 1;
                     startedBattleGen = roomForBattleBroadcast.battleStartGen;
                     startedHostAccountId = roomForBattleBroadcast.hostAccountId;
+                    traceBattle('battle-start', client, { members: roomForBattleBroadcast.members.size, mode: roomForBattleBroadcast.campaign ? 'PVE' : 'PVP/other' });
                 }
 
                 function battleStartStillValid(tag)
