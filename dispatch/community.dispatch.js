@@ -5,6 +5,8 @@ const { MAX_SLOT_COUNT } = require('../datatypes/enums');
 
 const rooms = require('../rooms.js');
 const whitelist = require('../config/whitelist.js');
+const serverConfig = require('../config/server');
+const { resolveGameHost, peerAddressProblem } = require('../config/game-hosts');
 
 function catalogCategoryType(row) {
     const category = Number(row.category_type) || 2;
@@ -127,6 +129,17 @@ class ZCommunityDispatch
 
             const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
             const room = rooms.getRoomByAccount(accountId);
+            // A guest can report a failed ClientTravel after receiving the host
+            // endpoint. Do not turn that failure into another success response.
+            if (room && accountId !== room.hostAccountId) {
+                if (body.length < 6) {
+                    console.error(`[battle-network] peer-result room=${room.id} account=${accountId} malformed=${body.length}`);
+                    return true;
+                }
+                const result = body.readUInt32LE(0x02);
+                console.log(`[battle-network] peer-result room=${room.id} account=${accountId} result=0x${result.toString(16)}`);
+                if (result !== 0) return true;
+            }
             if (room && accountId === room.hostAccountId && room.members.size > 1) {
                 if (body.length < 8) {
 
@@ -136,23 +149,34 @@ class ZCommunityDispatch
                     const resultCode = body.readUInt32LE(0x02);
                     const port = body.readUInt16LE(0x06);
 
-                    if (resultCode !== 0) {
+                    if (resultCode !== 0 || port === 0) {
 
-                        console.error(`[ZDispatchWaiting] !! Ready_Host_CA result=0x${(resultCode >>> 0).toString(16)} (host Listen failed) for room #${room.id} -- sending NOTHING to anyone, not even the host's own Ready_Success_SN`);
+                        console.error(`[battle-network] host-listen-failed room=${room.id} account=${accountId} result=0x${(resultCode >>> 0).toString(16)} reportedPort=${port}; no endpoint or success sent`);
                         suppressHostSuccess = true;
                     } else {
-                        const hostAddress = client.username_
+                        const authorizedAddress = client.username_
                             ? whitelist.getHostAddress(client.username_, client.socket_ && client.socket_.remoteAddress)
                             : null;
-                        if (!hostAddress) {
+                        const endpoint = resolveGameHost(serverConfig.load(), client.username_, authorizedAddress, port);
+                        if (!endpoint) {
                             console.error(`[ZDispatchWaiting] !! no hostAddress configured for host account=${accountId} (username=${client.username_}), room #${room.id} -- not sending Ready_Host_SN to ${room.members.size - 1} non-host member(s)`);
                         } else {
+                            const unreachable = Array.from(room.members.values()).find(member =>
+                                member.accountId !== room.hostAccountId && member.client &&
+                                peerAddressProblem(endpoint, member.client.socket_?.remoteAddress));
+                            if (unreachable) {
+                                console.error(`[battle-network] host-endpoint-refused room=${room.id}: ${peerAddressProblem(endpoint, unreachable.client.socket_?.remoteAddress)}`);
+                                return true;
+                            }
+                            room.battleEndpoint = endpoint;
+                            console.log(`[battle-network] host-ready room=${room.id} account=${accountId} observed=${endpoint.observedAddress} reportedPort=${port} advertised=${endpoint.address}:${endpoint.port} source=${endpoint.source}; forward the advertised game port to this host's listen port (not the Node lobby port)`);
                             const { sendReadyHostSnToRoomMember } = require('./gate.game.dispatch.js');
                             const mapCacheKey = Number(room.mapId) || 58;
                             for (const member of room.members.values()) {
                                 if (member.accountId === room.hostAccountId) continue;
                                 if (!member.client) continue;
-                                sendReadyHostSnToRoomMember(member.client, hostAddress, port, mapCacheKey);
+                                sendReadyHostSnToRoomMember(member.client, endpoint.address, endpoint.port, mapCacheKey);
+                                console.log(`[battle-network] peer-connect room=${room.id} account=${member.accountId} target=${endpoint.address}:${endpoint.port}`);
 
                                 sendReadySuccessAndBeginRound(member.client, '0x00420114 (non-host, after Ready_Host_SN)');
                             }

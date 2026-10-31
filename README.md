@@ -14,6 +14,11 @@ The server files are at the root of this repository.
 
 Local credentials, server settings, installed dependencies, game-client binaries, and decrypted/generated game assets are excluded. Supply the client and runtime assets separately as described in the upstream guide.
 
+## 외부 네트워크에서 함께 플레이
+
+서버와 방장이 같은 PC에 있어도 외부 참가자에게 방장의 공인 IP/전투 포트를 전달하도록 `gameHosts`를 설정할 수 있습니다.
+설정 예시, 포트포워딩, 실패 로그와 검증 범위는 [한국어 네트워크 설정 안내](docs/NETWORK_SETUP.ko.md)를 확인하세요.
+
 ---
 
 # MRO Server

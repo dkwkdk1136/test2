@@ -1,4 +1,5 @@
 {
     "publicHost": "127.0.0.1",
-    "cachePath": "../MetalRage/Data/System/Cache.Bin"
+    "cachePath": "../MetalRage/Data/System/Cache.Bin",
+    "gameHosts": {}
 }

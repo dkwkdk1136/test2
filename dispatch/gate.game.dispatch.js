@@ -15,6 +15,8 @@ const { decodeAnsiBytes, decodeBig5ForLog, writeAnsiStringField } = require('./r
 const { leaveRoomAndNotify } = require('./room/room-leave');
 
 const whitelist = require('../config/whitelist.js');
+const serverConfig = require('../config/server');
+const { resolveGameHost, peerAddressProblem } = require('../config/game-hosts');
 
 const { MAP_IDS_PVP } = require('./map-info.sender');
 
@@ -1035,12 +1037,21 @@ class ZGateGameDispatch
                         }
                         if (roomForGate.members.size > 1) {
 
-                            const hostAddress = client.username_
+                            const authorizedAddress = client.username_
                                 ? whitelist.getHostAddress(client.username_, client.socket_ && client.socket_.remoteAddress)
                                 : null;
-                            if (!hostAddress) {
+                            const endpoint = resolveGameHost(serverConfig.load(), client.username_, authorizedAddress);
+                            if (!endpoint) {
                                 console.error(`[ZGateGameDispatch] !! Refusing battle start: no hostAddress configured for host account=${accountIdForGate} (username=${client.username_}, nickname=${client.nickname_}), room #${roomForGate.id} has ${roomForGate.members.size} members`);
                                 return true;
+                            }
+                            for (const member of roomForGate.members.values()) {
+                                if (member.accountId === roomForGate.hostAccountId || !member.client) continue;
+                                const problem = peerAddressProblem(endpoint, member.client.socket_?.remoteAddress);
+                                if (problem) {
+                                    console.error(`[battle-network] start-refused room=${roomForGate.id} host=${accountIdForGate} peer=${member.accountId}: ${problem}`);
+                                    return true;
+                                }
                             }
                         }
                     }
@@ -1069,6 +1080,7 @@ class ZGateGameDispatch
                     const roomForStart = rooms.getRoomByAccount(accountIdForStart);
                     if (roomForStart) {
                         roomForStart.state = 'playing';
+                        roomForStart.battleEndpoint = null;
                         for (const member of roomForStart.members.values()) {
                             if (member.client) member.client.gameStarted_ = true;
                         }
@@ -1211,6 +1223,8 @@ class ZGateGameDispatch
                 const accountId = Number(client.accountIndex_ || client.accountId_ || 1);
                 const room = rooms.getRoomByAccount(accountId);
                 if (room && room.state === 'playing') {
+                    const endpoint = room.battleEndpoint;
+                    console.log(`[battle-network] peer-leave room=${room.id} account=${accountId} host=${room.hostAccountId} endpoint=${endpoint ? `${endpoint.address}:${endpoint.port}` : 'not-ready'}; client requested return (reason not supplied by this packet)`);
                     const departing = room.members.get(accountId);
                     const remaining = Array.from(room.members.values()).filter((member) => member.accountId !== accountId);
                     const remainingTeams = new Set(remaining.map((member) => Number(member.team)));

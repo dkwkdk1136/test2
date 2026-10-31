@@ -32,7 +32,7 @@ function installFakeWhitelist(hostAddressesByUsername, enabled = true)
         },
         status() { return enabled ? 'on' : 'off'; },
         getHostAddress(username) {
-            if (!enabled) return arguments[1] || null;
+            if (!enabled) return String(arguments[1] || '').replace(/^::ffff:/i, '') || null;
             const key = String(username || '').toLowerCase();
             return Object.prototype.hasOwnProperty.call(hostAddressesByUsername, key)
                 ? hostAddressesByUsername[key]
@@ -116,14 +116,14 @@ function setUpRoom()
     return { gate, community, clientA, clientB };
 }
 
-async function startBattleUpToReadyHostSq({ gate, clientA, clientB, fakeTimers, createBody })
+async function startBattleUpToReadyHostSq({ gate, clientA, clientB, fakeTimers, createBody, guestTeam = 0 })
 {
     const createHandled = gate.dispatch(clientA, CQ_CREATE, createBody || makeCreateBody('Alice Room'));
     assert.strictEqual(createHandled, true, 'CQ_CREATE must be handled');
     const roomId = clientA.createdRoomIndex_;
     assert.ok(roomId, 'A must have a createdRoomIndex_ after CQ_CREATE');
 
-    rooms.addMember(roomId, { accountId: 2, nickname: 'Bob', team: 0, slot: 0, ready: false, client: clientB });
+    rooms.addMember(roomId, { accountId: 2, nickname: 'Bob', team: guestTeam, slot: 0, ready: false, client: clientB });
     assert.strictEqual(rooms.getRoom(roomId).members.size, 2, 'room must have 2 members before F5');
 
     while (fakeTimers.fireNext()) {  }
@@ -322,6 +322,69 @@ function testReadyHostSnMapTableSingleConnectionPath()
     console.log('[room-ready-host-split test] PASS: buildReadyHostSnMsg single-connection path still resolves MAP_ID_TO_MAP_NAME_GG (9010->Map_PC04, 9004->Map_PC03)');
 }
 
+async function testInternetHostEndpoint(rawRoomType, observedAddress, mappedPort)
+{
+    installFakeWhitelist({}, false);
+    const settings = require('../config/server').load();
+    const original = settings.gameHosts;
+    settings.gameHosts = require('../config/game-hosts').validateGameHosts({
+        Alice: { address: '203.0.113.20', ...(mappedPort ? { port: mappedPort } : {}) },
+    });
+    const { gate, community, clientA, clientB } = setUpRoom();
+    clientA.socket_.remoteAddress = observedAddress;
+    clientB.socket_.remoteAddress = '198.51.100.30';
+    const fakeTimers = installFakeTimers();
+    try {
+        const createBody = makeCreateBody('Internet room');
+        createBody[0] = rawRoomType;
+        const roomId = await startBattleUpToReadyHostSq({ gate, clientA, clientB, fakeTimers, createBody, guestTeam: 1 });
+        assert.ok(clientA._sent.some(s => s.op === READY_HOST_SQ));
+        clientA._sent.length = clientB._sent.length = 0;
+        community.dispatch(clientA, READY_HOST_CA, makeReadyHostCaBody(7777));
+        const packet = clientB._sent.find(s => s.op === READY_HOST_SN);
+        assert.ok(packet, 'external guest receives the configured endpoint');
+        const body = Buffer.from(packet.hex, 'hex');
+        assert.strictEqual(body.readUInt16LE(0), mappedPort || 7777);
+        assert.strictEqual(body.subarray(3).toString('ascii').split('\0')[0], '203.0.113.20');
+        assert.strictEqual(rooms.getRoom(roomId).battleEndpoint.reportedPort, 7777);
+
+        clientB._sent.length = 0;
+        community.dispatch(clientB, READY_HOST_CA, makeReadyHostCaBody(0, 0xFFFFFFFF));
+        assert.strictEqual(clientB._sent.length, 0, 'a failed guest connection must not be acknowledged as success');
+        community.dispatch(clientB, READY_HOST_CA, Buffer.alloc(4));
+        assert.strictEqual(clientB._sent.length, 0, 'malformed guest response must not be acknowledged as success');
+        community.dispatch(clientB, READY_HOST_CA, makeReadyHostCaBody(0, 0));
+        assert.strictEqual(clientB._sent.filter(s => s.op === READY_SUCCESS_SN).length, 1);
+
+        clientA._sent.length = clientB._sent.length = 0;
+        community.dispatch(clientA, READY_HOST_CA, makeReadyHostCaBody(0));
+        assert.strictEqual(clientA._sent.length + clientB._sent.length, 0, 'port zero must not be advertised, even with an external port override');
+        console.log(`[room-ready-host-split test] PASS: internet endpoint and guest failure handling (roomType=${rawRoomType}, observed=${observedAddress}, mappedPort=${mappedPort || 'same'})`);
+    } finally {
+        fakeTimers.restore();
+        settings.gameHosts = original;
+        resetRooms();
+    }
+}
+
+async function testLoopbackHostRefusedForExternalGuest()
+{
+    installFakeWhitelist({}, false);
+    const { gate, clientA, clientB } = setUpRoom();
+    clientB.socket_.remoteAddress = '198.51.100.30';
+    const fakeTimers = installFakeTimers();
+    try {
+        const roomId = await startBattleUpToReadyHostSq({ gate, clientA, clientB, fakeTimers });
+        assert.strictEqual(rooms.getRoom(roomId).state, 'lobby');
+        assert.strictEqual(clientA._sent.some(s => s.op === READY_HOST_SQ), false);
+        assert.strictEqual(clientB._sent.length, 0, 'guest must stay in room instead of loading an unreachable loopback host');
+        console.log('[room-ready-host-split test] PASS: loopback host without override refuses external start before loading');
+    } finally {
+        fakeTimers.restore();
+        resetRooms();
+    }
+}
+
 async function main()
 {
     await testSqOnlyToHostAndSnToNonHost();
@@ -332,6 +395,9 @@ async function main()
     await testReadyHostSnUsesRealMapId(9010, 'Map_PC04');
     await testReadyHostSnUsesRealMapId(9001, 'Map_PC01');
     testReadyHostSnMapTableSingleConnectionPath();
+    await testInternetHostEndpoint(1, '::ffff:127.0.0.1');
+    await testInternetHostEndpoint(2, '192.168.1.10', 40000);
+    await testLoopbackHostRefusedForExternalGuest();
     console.log('[room-ready-host-split test] ALL CHECKS PASS');
     process.exit(0);
 }

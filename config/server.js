@@ -1,19 +1,22 @@
 const fs = require('fs');
 const path = require('path');
 const { isIPv4 } = require('net');
+const { validateGameHosts } = require('./game-hosts');
 
-let config;
+let cachedConfig;
 
 function load()
 {
-    if (config) return config;
+    if (cachedConfig) return cachedConfig;
     const filename = path.join(__dirname, 'server.json');
+    let config;
     try {
         config = JSON.parse(fs.readFileSync(filename, 'utf8'));
     } catch (err) {
         if (err.code !== 'ENOENT') throw err;
         config = {};
     }
+    // Publish the cached configuration only after all validation succeeds.
     const host = config.publicHost || '127.0.0.1';
     if (!isIPv4(host)) throw new Error('config/server.json: publicHost must be an IPv4 address');
     config.publicHost = host;
@@ -30,6 +33,8 @@ function load()
     config.startingCredits = startingCredits;
     config.grantAllItemsAndMaxCredits = config.grantAllItemsAndMaxCredits === true;
     config.whitelistEnabled = config.whitelistEnabled === true;
+    config.gameHosts = validateGameHosts(config.gameHosts);
+    cachedConfig = config;
     return config;
 }
 

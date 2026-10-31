@@ -1,0 +1,9 @@
+{
+    "publicHost": "203.0.113.10",
+    "cachePath": "../MetalRage/Data/System/Cache.Bin",
+    "gameHosts": {
+        "YourHostLogin": {
+            "address": "203.0.113.10"
+        }
+    }
+}
