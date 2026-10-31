@@ -1,0 +1,16 @@
+{
+  "name": "metalrage-server-emu",
+  "version": "0.1.0",
+  "description": "Metal Rage Online server emulator",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "http": "node server.launcher.js",
+    "test": "node --test test/server.test.js test/database.test.js && node test/room-join.js && node test/room-name-big5.js && node test/room-ready-host-split.js && node test/whitelist.js && node test/round-advance.js && node test/room-battle-start-generation.js",
+    "db:migrate": "node database/migrate.js"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "mysql2": "^3.20.0"
+  }
+}

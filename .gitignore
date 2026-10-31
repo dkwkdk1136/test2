@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+!.env.example
+logs/
+*.log
+database/config.json
+config/server.json
+config/allowed-users.json
+static/gamefiles/*
+!static/gamefiles/decrypt.js
+!static/gamefiles/decrypt_run.js
+!static/gamefiles/extract_item_ids.py
+!static/gamefiles/extract_items.py
+!static/gamefiles/keys.bin
