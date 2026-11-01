@@ -15,6 +15,8 @@ function findCacheBinPath()
     }
     const local = path.join(__dirname, '..', 'static', 'Cache.Bin');
     if (fs.existsSync(local)) return local;
+    const gamefiles = path.join(__dirname, '..', 'static', 'gamefiles', 'Cache.Bin');
+    if (fs.existsSync(gamefiles) && fs.statSync(gamefiles).isFile()) return gamefiles;
     for (const start of [__dirname, process.cwd()]) {
         let dir = start;
         while (true) {

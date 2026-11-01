@@ -14,6 +14,32 @@ The server files are at the root of this repository.
 
 Local credentials, server settings, installed dependencies, game-client binaries, and decrypted/generated game assets are excluded. Supply the client and runtime assets separately as described in the upstream guide.
 
+## 상점 구매 오류: Cache.Bin 경로
+
+`Shop Buy transaction error: Set cachePath in config/server.json to the game client Cache.Bin`은 서버가 아이템 메타데이터 파일을 찾지 못했다는 뜻입니다.
+
+`config/server.example.json`을 `config/server.json`으로 복사하고, 실제 파일 위치를 지정하세요. 서버 폴더 안에 파일이 있다면 설치 위치에 의존하지 않는 상대 경로를 사용할 수 있습니다.
+
+```json
+{
+  "publicHost": "127.0.0.1",
+  "cachePath": "static/gamefiles/Cache.Bin",
+  "gameHosts": {}
+}
+```
+
+상대 경로의 기준은 `config` 폴더가 아니라 서버 최상위 폴더입니다. 위 경로는 서버가 `C:/MetalRage-v0.1.1`에 있을 때 `C:/MetalRage-v0.1.1/static/gamefiles/Cache.Bin`을 가리킵니다. 기존 publicHost/gameHosts 설정은 유지하세요.
+
+`cachePath`가 없으면 `static/Cache.Bin`, `static/gamefiles/Cache.Bin`, 상위 폴더의 `MetalRage/Data/System/Cache.Bin` 순서로 자동 탐색합니다. 명시한 cachePath가 잘못된 경우에는 자동 탐색으로 대체하지 않으므로 해당 설정을 수정해야 합니다.
+
+저장 후 서버를 완전히 재시작하세요. 서버 폴더에서 다음 명령으로 경로 확인이 가능합니다(파일 내용의 호환성까지 검증하는 명령은 아닙니다).
+
+```powershell
+node -e "console.log(require('./config/cache').findCacheBinPath())"
+```
+
+개인 설정 `config/server.json`과 게임 데이터 `Cache.Bin`은 GitHub에 포함되지 않습니다. 서버 교체 시 별도로 보존하세요. DB 초기화는 필요하지 않습니다.
+
 ## 외부 네트워크에서 함께 플레이
 
 서버와 방장이 같은 PC에 있어도 외부 참가자에게 방장의 공인 IP/전투 포트를 전달하도록 `gameHosts`를 설정할 수 있습니다.
