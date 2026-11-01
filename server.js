@@ -103,6 +103,7 @@ async function start()
     require('./config/whitelist').initialize();
     await db.verifyConnection();
     await require('./auth/accounts').assertReady(db);
+    await require('./rewards/matches').recover(db.pool);
     const dispatch = new DispatchServer('DispatchServer', transport.authPort, require('./dispatch.js'), transport.options);
     const game = new DispatchServer('GameServer', transport.gamePort, require('./game.js'), transport.options);
     rooms.registerLobbyClientSource(game.clients);

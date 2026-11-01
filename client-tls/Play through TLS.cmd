@@ -7,6 +7,6 @@ if not exist "%~dp0runtime\node.exe" (
     pause
     exit /b 1
 )
-"%~dp0runtime\node.exe" "%~dp0launch.js"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0bootstrap.ps1"
 if errorlevel 1 pause
 endlocal

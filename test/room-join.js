@@ -1,3 +1,5 @@
+// Isolate match reward persistence from the live database in protocol regression tests.
+require('../rewards/store').settle = async () => [];
 'use strict';
 
 const assert = require('assert');
@@ -799,7 +801,7 @@ async function main()
         pvpRoom.members.get(82).team = 1;
         pvpRoom.members.get(81).team = 0;
         pvpHost._sent.length = 0;
-        assert.strictEqual(gate.dispatch(pvpJoiner, 0x00222131, Buffer.alloc(0)), true, 'in-battle leave must be handled');
+        assert.strictEqual(await gate.dispatch(pvpJoiner, 0x00222131, Buffer.alloc(0)), true, 'in-battle leave must be handled');
         assert.strictEqual(pvpRoom.state, 'lobby', 'a PvP match must end when one side leaves the match');
         const endGame = pvpHost._sent.find((s) => s.op === '0x00222213');
         assert.ok(endGame, 'remaining PvP player must receive EndGame_SN when the opposing side leaves');

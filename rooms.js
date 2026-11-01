@@ -113,6 +113,7 @@ function addMember(roomId, member) {
 
     room.members.set(full.accountId, full);
     byAccount.set(full.accountId, roomId);
+    require('./rewards/matches').join(room, full);
     return full;
 }
 

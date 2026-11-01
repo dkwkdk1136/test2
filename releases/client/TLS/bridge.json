@@ -1,0 +1,7 @@
+{
+  "host": "mometalrage261031.iptime.org",
+  "serverName": "mometalrage261031.iptime.org",
+  "authPort": 19211,
+  "gamePort": 40907,
+  "caFile": "ca.crt"
+}

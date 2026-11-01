@@ -16,6 +16,7 @@ function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
     const room = rooms.getRoomByAccount(accountId);
     if (!room) return;
 
+    require('../../rewards/matches').leave(room,accountId);
     const leaverMember = room.members.get(accountId);
     const leaverClient = leaverMember ? leaverMember.client : null;
     traceBattle('room-member-removed', leaverClient, { removedAccount: accountId, kickout });
@@ -24,6 +25,7 @@ function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
     const remainingMembers = Array.from(room.members.values()).filter((m) => m.accountId !== accountId);
 
     if (wasPlaying) {
+        require('../../rewards/matches').abort(room);
         room.state = 'lobby';
         room.battleStartGen = (room.battleStartGen || 0) + 1;
         for (const member of room.members.values()) {
@@ -45,6 +47,7 @@ function leaveRoomAndNotify(accountId, { kickout = false } = {}) {
             member.client.send(leaveMsg);
         }
         if (wasPlaying) {
+        require('../../rewards/matches').abort(room);
             for (const member of remainingMembers) {
                 if (!member.client) continue;
                 const [stateMsg, stateBody] = getExactMessageBuffer(0x00220401, 0x08);

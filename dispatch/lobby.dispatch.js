@@ -1,6 +1,7 @@
 const NetworkClient = require("../client");
 
 const rooms = require('../rooms.js');
+const rewards = require('../rewards/matches');
 const { sendFullRoomList } = require('./room/room-list.sender');
 
 const { getGameInfoRound } = require('./gate.game.dispatch.js');
@@ -140,6 +141,7 @@ class ZLobbyDispatch
                 const roomForBeginRound = rooms.getRoomByAccount(accountIdForBeginRound);
 
                 if (roomForBeginRound) {
+                    if (roomForBeginRound.rewardMatch?.settling) return true;
                     if (accountIdForBeginRound !== roomForBeginRound.hostAccountId) {
                         console.log(`[ZLobbyDispatch] >> Ignored BeginRound_CN 0x00230151 from non-host account=${accountIdForBeginRound} (host=${roomForBeginRound.hostAccountId}, room #${roomForBeginRound.id}) -- no reply`);
                         return true;
@@ -156,6 +158,7 @@ class ZLobbyDispatch
                     roomForBeginRound.battleStats = new Map();
                     roomForBeginRound.teamScores = [0, 0];
                     roomForBeginRound.state = 'playing';
+                    rewards.start(roomForBeginRound);
                     broadcastRoomListChange(rooms.getLobbyClients(), roomForBeginRound, 2, getExactMessageBuffer);
 
                     client.battleStats_ = {};
@@ -182,7 +185,8 @@ class ZLobbyDispatch
             }
             case 0x00230139:
             {
-                const action = body.length >= 3 ? body[2] : 2;
+                if (body.length < 3 || ![1,2].includes(body[2])) return true;
+                const action = body[2];
 
                 const accountIdForCampaign = Number(client.accountIndex_ || client.accountId_ || 1);
                 const roomForCampaign = rooms.getRoomByAccount(accountIdForCampaign);
@@ -192,6 +196,9 @@ class ZLobbyDispatch
                     return true;
                 }
 
+                if (roomForCampaign && !roomForCampaign.campaign) return true;
+                if (roomForCampaign?.rewardMatch?.ended) return true;
+                if (roomForCampaign && roomForCampaign.state !== 'playing') return true;
                 const buildEndRoundMsg = () => {
                     const [msg, eb] = getExactMessageBuffer(0x00222211, 0x1E);
                     eb.writeUInt16LE(0, 0x02);
@@ -230,6 +237,7 @@ class ZLobbyDispatch
 
                 }
                 const winTeam = action === 1 ? 0 : 1;
+                const complete = () => {
                 if (roomForCampaign) {
                     rooms.sendAll(roomForCampaign.id, (target) => {
                         const [msg, eb] = target.getMessageBuffer(0x00222213, 0x1E);
@@ -238,6 +246,7 @@ class ZLobbyDispatch
                         eb.writeUInt16LE(1, 0x10);
                         return msg;
                     });
+                    rewards.sendScore(roomForCampaign);
                     console.log(`[ZLobbyDispatch] >> Campaign_CN action=${action} -> Broadcast EndGame_SN 0x00222213 (winTeam=${winTeam}) to room #${roomForCampaign.id} (${roomForCampaign.members.size} member(s))`);
                     roomForCampaign.state = 'lobby';
                     roomForCampaign.battleStartGen = (roomForCampaign.battleStartGen || 0) + 1;
@@ -266,10 +275,14 @@ class ZLobbyDispatch
                 }
 
                 return true;
+                };
+                if (roomForCampaign) return rewards.finish(roomForCampaign,winTeam,'campaign').then(complete);
+                return complete();
             }
 
             case 0x00230123:
             {
+                if (body.length < 7) return true;
                 const attackerIndex = body.length >= 2 ? body.readUint16LE(0x00) : 0;
                 const victimIndex = body.length >= 4
                     ? body.readUint16LE(0x02)
@@ -278,8 +291,9 @@ class ZLobbyDispatch
                 const specialFlag = body.length >= 6 ? body[0x05] : 0;
                 const weaponPart = body.length >= 7 ? body[0x06] : 0;
                 const auxiliaryValue = body.length >= 11 ? body.readUint32LE(0x07) : 0;
-                const EXP_PER_KILL = 10;
-                const POINT_PER_KILL = 10;
+                const rewardConfig = require('../rewards/policy').config;
+                const EXP_PER_KILL = client.campaignRoom_ ? rewardConfig.pveKillXp : rewardConfig.killXp;
+                const POINT_PER_KILL = client.campaignRoom_ ? rewardConfig.pveKillPoints : rewardConfig.killPoints;
                 const accountIdForDeath = Number(client.accountIndex_ || client.accountId_ || 1);
                 const roomForDeath = rooms.getRoomByAccount(accountIdForDeath);
 
@@ -288,6 +302,10 @@ class ZLobbyDispatch
                     return true;
                 }
 
+                if (roomForDeath && (roomForDeath.state !== 'playing' || roomForDeath.rewardMatch?.ended)) return true;
+                if (deathType < 1 || deathType > 4) return true;
+                if (rooms.isPvpRoom(roomForDeath) && (!roomForDeath.members.has(attackerIndex)||!roomForDeath.members.has(victimIndex))) return true;
+                if (roomForDeath?.rewardMatch && !rewards.death(roomForDeath,attackerIndex,victimIndex)) return true;
                 let statFor;
                 if (roomForDeath) {
                     if (!roomForDeath.battleStats)
@@ -338,8 +356,8 @@ class ZLobbyDispatch
                     const writeBattle = (offset, st) => {
                         deathBody.writeUint16LE(st.kills & 0xFFFF, offset + 0x00);
                         deathBody.writeUint16LE(st.deaths & 0xFFFF, offset + 0x02);
-                        deathBody.writeUint32LE(st.kills * EXP_PER_KILL, offset + 0x08);
-                        deathBody.writeUint32LE(st.kills * POINT_PER_KILL, offset + 0x0C);
+                        deathBody.writeUint32LE(Math.min(st.kills,client.campaignRoom_?rewardConfig.pveMaximumRewardKills:rewardConfig.maximumRewardKills) * EXP_PER_KILL, offset + 0x08);
+                        deathBody.writeUint32LE(Math.min(st.kills,client.campaignRoom_?rewardConfig.pveMaximumRewardKills:rewardConfig.maximumRewardKills) * POINT_PER_KILL, offset + 0x0C);
                     };
                     writeBattle(0x31, killerStats);
                     writeBattle(0x41, victimStats);
@@ -362,6 +380,7 @@ class ZLobbyDispatch
                     );
                 }
 
+                if (rooms.isPvpRoom(roomForDeath) && Math.max(...teamScores) >= require('../rewards/policy').config.pvpGoalScore) void rewards.endPvp(roomForDeath,rewards.scoreWinner(roomForDeath),'score-limit');
                 if (deathType < 1 || deathType > 4)
                     return true;
 
@@ -375,6 +394,9 @@ class ZLobbyDispatch
                 const respawnIndex = body.length >= 2
                     ? body.readUInt16LE(0)
                     : Number(client.accountIndex_ || client.accountId_ || 1);
+                const activeRoom=rooms.getRoomByAccount(Number(client.accountId_));
+                if(activeRoom && Number(client.accountId_)!==activeRoom.hostAccountId && Number(client.accountId_)!==respawnIndex) return true;
+                rewards.respawn(activeRoom,respawnIndex);
                 this.sendRespawn(client, respawnIndex, 'Respawn_CN');
                 return true;
             }

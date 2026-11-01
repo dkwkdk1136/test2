@@ -1,3 +1,5 @@
+// Isolate match reward persistence from the live database in protocol regression tests.
+require('../rewards/store').settle = async () => [];
 'use strict';
 
 const assert = require('assert');

@@ -24,3 +24,11 @@ static/gamefiles/*
 !static/gamefiles/extract_item_ids.py
 !static/gamefiles/extract_items.py
 !static/gamefiles/keys.bin
+
+/client-native/bin/
+/client-native/obj/
+/client-native/publish/
+/test/native/bin/
+/test/native/obj/
+
+/private-state/

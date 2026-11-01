@@ -3,6 +3,7 @@ const NetworkClient = require("../client");
 const { sendGameUserBootstrap } = require('./room/room-game-user.sender');
 
 const rooms = require('../rooms.js');
+const rewards = require('../rewards/matches');
 
 const { sendRoomStatePackets, sendRoomNameOnly, sendRoomOptionOnly } = require('./room/room-state.sender');
 
@@ -299,7 +300,7 @@ function sendGameInfoSn(client, tag)
             timeLimitSource = 'create';
         }
     }
-    const goalScore = 0;
+    const goalScore = client.campaignRoom_ ? 0 : require('../rewards/policy').config.pvpGoalScore;
 
     body.writeUInt32LE(battleIndex, 0x00);
     body.writeUInt16LE(redTeamIndex, 0x04);
@@ -360,8 +361,8 @@ function sendGameInfoSnToClient(room, client, tag)
     body.writeUInt16LE(Number(room.mapId || MAP_ID_DEFAULT_CAMPAIGN) & 0xFFFF, 0x11);
     body.writeUInt16LE(Number(room.playTime) || 10, 0x13);
     body.writeUInt8((Number(room.playRound) || 0) & 0xFF, 0x15);
-    body.writeUInt16LE(0, 0x16);
-    body.writeUInt16LE(0, 0x18);
+    body.writeUInt16LE(room.campaign ? 0 : require('../rewards/policy').config.pvpGoalScore, 0x16);
+    body.writeUInt16LE(room.campaign ? 0 : require('../rewards/policy').config.pvpGoalScore, 0x18);
     client.send(msg);
     console.log(`[ZGateGameDispatch] >> Sent Game_Info_SN 0x00222111 to account=${client.accountIndex_ || client.accountId_} [${tag}]`);
 }
@@ -455,7 +456,7 @@ function sendGameInfoSnRoomBroadcast(room, tag)
         timeLimitSource = 'room';
     }
     const playRound = Number(room.playRound) || 0;
-    const goalScore = 0;
+    const goalScore = room.campaign ? 0 : require('../rewards/policy').config.pvpGoalScore;
 
     rooms.sendAll(room.id, () => {
         const [msg, body] = getExactMessageBuffer(0x00222111, BODY_SIZE);
@@ -1231,10 +1232,14 @@ class ZGateGameDispatch
                 if (room && room.state === 'playing') {
                     const endpoint = room.battleEndpoint;
                     console.log(`[battle-network] peer-leave room=${room.id} account=${accountId} host=${room.hostAccountId} endpoint=${endpoint ? `${endpoint.address}:${endpoint.port}` : 'not-ready'}; client requested return (reason not supplied by this packet)`);
+                    rewards.leave(room,accountId);
                     const departing = room.members.get(accountId);
                     const remaining = Array.from(room.members.values()).filter((member) => member.accountId !== accountId);
                     const remainingTeams = new Set(remaining.map((member) => Number(member.team)));
                     const endsPvp = rooms.isPvpRoom(room) && remaining.length > 0 && remainingTeams.size < 2;
+                    if (endsPvp && room.rewardMatch && !room.rewardMatch.ended) {
+                        return rewards.endPvp(room,Number(remaining[0].team)||0,'opponent-left').then(()=>true);
+                    }
                     if (endsPvp) {
                         const winnerTeam = Number(remaining[0].team) || 0;
                         for (const member of remaining) {

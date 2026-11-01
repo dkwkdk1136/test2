@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><StartupObject>NativeTests</StartupObject></PropertyGroup>
+  <ItemGroup><Compile Include="../../client-native/Program.cs" Link="Launcher.cs" /></ItemGroup>
+</Project>

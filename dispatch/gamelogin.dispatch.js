@@ -1,5 +1,7 @@
 const NetworkClient = require("../client");
 const db = require('../database/db');
+const { handleLobbyLeave } = require('./lobby-leave');
+const gateDispatch = new (require('./gate.dispatch'))();
 
 const { clampMoney, moneyBigInt } = require('./money');
 
@@ -46,6 +48,9 @@ class ZGameLoginDispatch
 {
     dispatch(client, type, body)
     {
+        if (handleLobbyLeave(client, type, body)) return true;
+        // Gate re-entry can arrive on the existing game connection.
+        if (type === 0x00220131) return gateDispatch.dispatch(client, type, body);
         //Handle known messages
         if (type !== CQ_GAME_LOGIN && type !== 0x00220111)
             return false;

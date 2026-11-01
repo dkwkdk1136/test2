@@ -1,15 +1,16 @@
 {
   "name": "metalrage-server-emu",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Metal Rage Online server emulator",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "http": "node server.launcher.js",
-    "test": "node --test test/tls-launcher.test.js test/auth.test.js test/auth-transaction.test.js test/server.test.js test/database.test.js test/game-hosts.test.js && node test/room-join.js && node test/room-name-big5.js && node test/room-ready-host-split.js && node test/whitelist.js && node test/round-advance.js && node test/room-battle-start-generation.js",
+    "test": "node --test test/rewards.test.js test/lobby-leave.test.js test/tls-launcher.test.js test/auth.test.js test/auth-transaction.test.js test/server.test.js test/database.test.js test/game-hosts.test.js && node test/room-join.js && node test/room-name-big5.js && node test/room-ready-host-split.js && node test/whitelist.js && node test/round-advance.js && node test/room-battle-start-generation.js",
     "db:migrate": "node database/migrate.js",
     "auth:migrate": "node auth/manage.js migrate",
-    "test:tls": "node --test test/tls.test.js test/tls-launcher.test.js"
+    "test:tls": "node --test test/tls.test.js test/tls-launcher.test.js",
+    "rewards:migrate": "node rewards/store.js"
   },
   "dependencies": {
     "express": "^4.18.0",
