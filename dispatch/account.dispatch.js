@@ -3,6 +3,7 @@ const { MAX_MAP_COUNT, MAX_MECH_COUNT, MAX_SLOT_COUNT } = require('../datatypes/
 const db = require('../database/db');
 const serverConfig = require('../config/server');
 const whitelist = require('../config/whitelist');
+const accountsAuth = require('../auth/accounts');
 
 const { writeRecordInfoBody } = require('./record-info.builder');
 
@@ -95,6 +96,7 @@ class ZAccountDispatch
      */
     async handleCreate(client, body)
     {
+        if (!client.accountId_ || !client.username_) { client.disconnect(); return; }
         try {
             if (body.length != 0x1d) {
                 client.disconnect();
@@ -163,6 +165,14 @@ class ZAccountDispatch
     /**
      * Handle login - look up account in DB, send data or wait for creation
      */
+    rejectLogin(client)
+    {
+        const [msg, body] = client.getMessageBuffer(SA_LOGIN_WASABII, 6);
+        body.writeUInt16LE(0, 0);
+        body.writeUInt32LE(1, 2);
+        client.send(msg);
+    }
+
     async handleLogin(client, body)
     {
         try {
@@ -171,38 +181,19 @@ class ZAccountDispatch
                 return;
             }
 
-            const username = body.subarray(0, 0x19).toString('ascii').split('\0').shift();
-            console.log(`[ZDispatchAccount::CQ_LOGIN_WASABII] Processing login for "${username}"`);
-
+            if (client.accountId_) { client.disconnect(); return; }
+            let request;
+            try { request = accountsAuth.parseLogin(body); }
+            catch { this.rejectLogin(client); return; }
+            const username = request.username;
             if (!whitelist.isAllowed(username, client.socket_ && client.socket_.remoteAddress)) {
-                client.disconnect();
+                this.rejectLogin(client);
                 return;
             }
-
-            //Store username on client
-            client.username_ = username;
-
-            let account = await db.getAccountByUsername(username);
-            if (!account) {
-                if (!username || username.length > 25) {
-                    client.disconnect();
-                    return;
-                }
-                try {
-                    const accountId = await db.createAccount(username, username, 101);
-                    account = await db.getAccountById(accountId);
-                    console.log(`[ZDispatchAccount::CQ_LOGIN_WASABII] Auto-registered account #${accountId} "${username}"`);
-                } catch (err) {
-                    if (err.code !== 'ER_DUP_ENTRY') throw err;
-                    account = await db.getAccountByUsername(username);
-                    if (!account) {
-                        const nickname = `${username.slice(0, 14)}_${Date.now().toString(36)}`;
-                        const accountId = await db.createAccount(username, nickname, 101);
-                        account = await db.getAccountById(accountId);
-                        console.log(`[ZDispatchAccount::CQ_LOGIN_WASABII] Auto-registered account #${accountId} "${username}"`);
-                    }
-                }
-            }
+            const account = await accountsAuth.authenticate(db, request, client.socket_ && client.socket_.remoteAddress);
+            if (!account) { this.rejectLogin(client); return; }
+            client.username_ = account.username;
+            console.log('[account-auth] ' + (request.register ? 'registered' : 'authenticated') + ' account=' + account.id);
 
             // Account exists - send full data from DB
             console.log(`[ZDispatchAccount::CQ_LOGIN_WASABII] Found account #${account.id} "${account.nickname}"`);

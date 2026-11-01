@@ -142,6 +142,7 @@ test('login database failure disconnects without success', async () => {
     try {
         const client = makeFakeClient(1, 9211), body = Buffer.alloc(0x381);
         body.write('Player');
+        body.write(require('../auth/passwords').passwordDigest('TestPass123'), 0x65, 'ascii');
         await new (require('../dispatch/account.dispatch'))().dispatch(client, 0x00110151, body);
         assert.equal(client.disconnected_, true);
         assert.equal(client._sent.length, 0);

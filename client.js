@@ -183,7 +183,7 @@ class NetworkClient
     onData(data)
     {
         // Debug: log raw incoming bytes
-        console.log(`[NetworkClient] RAW DATA: ${data.length} bytes: ${data.subarray(0, Math.min(64, data.length)).toString('hex')}`);
+        // Do not log wire bytes: login packets contain reusable password digests.
 
         // Accumulate incoming data
         this.recvbuf_ = Buffer.concat([this.recvbuf_, data]);

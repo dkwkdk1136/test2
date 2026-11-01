@@ -38,6 +38,7 @@ function load()
     return config;
 }
 
-function getPublicHost() { return load().publicHost; }
+// In TLS mode each player's game/lobby connection must return through their own local bridge.
+function getPublicHost() { const config = load(); return config.tls?.enabled === true ? '127.0.0.1' : config.publicHost; }
 
 module.exports = { getPublicHost, getAccountSettings: () => load(), load };

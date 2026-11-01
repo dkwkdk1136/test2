@@ -243,7 +243,7 @@ async function saveEquippedLoadout(accountId, mechType, serials)
     }
 }
 
-async function createAccount(username, nickname, pilot)
+async function createAccount(username, nickname, pilot, passwordHash = null)
 {
     const settings = serverConfig.getAccountSettings();
     const startingCredits = settings.grantAllItemsAndMaxCredits ? 2147483647 : settings.startingCredits;
@@ -257,6 +257,10 @@ async function createAccount(username, nickname, pilot)
             [username, nickname, pilot, startingCredits]
         );
         const accountId = result.insertId;
+
+        if (passwordHash !== null) {
+            await conn.execute('INSERT INTO account_credentials (account_id, password_hash) VALUES (?, ?)', [accountId, passwordHash]);
+        }
 
         // Initialize player record
         await conn.execute(

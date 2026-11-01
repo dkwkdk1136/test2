@@ -10,7 +10,10 @@ The server files are at the root of this repository.
 2. Copy `database/config.example.json` to `database/config.json` and enter your local database settings.
 3. Copy `config/server.example.json` to `config/server.json`; set `publicHost` and `cachePath` for your installation.
 4. Follow the [upstream setup guide](https://github.com/shanzenos/MRO-Server/wiki) to initialize the database and configure the game client.
-5. Run `npm start`. Run `npm test` for the automated tests.
+5. Run `npm run auth:migrate` to add the credential table without resetting player data. Provision each existing account with `node auth/manage.js set-password USERNAME` (interactive, hidden password input). Unknown IDs no longer auto-register on Login.
+6. For in-game Register, generate/apply the supported client menu patch using [the registration guide](docs/IN_GAME_REGISTRATION.ko.md).
+7. For encrypted login/lobby traffic and automatic client startup, follow [the TLS guide](docs/TLS_SETUP.ko.md). Certificate/key files and Node runtime binaries must be prepared locally; they are not in this repository.
+8. Start the server manually with `npm start` when ready. Run `npm test` for offline regression tests. TLS tests use temporary loopback ports and require generated fixtures as described in the TLS guide.
 
 Local credentials, server settings, installed dependencies, game-client binaries, and decrypted/generated game assets are excluded. Supply the client and runtime assets separately as described in the upstream guide.
 
@@ -39,6 +42,13 @@ node -e "console.log(require('./config/cache').findCacheBinPath())"
 ```
 
 개인 설정 `config/server.json`과 게임 데이터 `Cache.Bin`은 GitHub에 포함되지 않습니다. 서버 교체 시 별도로 보존하세요. DB 초기화는 필요하지 않습니다.
+
+## 게임 내 회원가입과 TLS
+
+- 기존 로그인창의 Register는 명시적으로 계정을 생성하고, Login은 비밀번호를 검증합니다. DB에는 개별 salt를 사용한 scrypt 결과를 저장합니다.
+- TLS 1.3 / AES-256-GCM으로 로그인·로비 연결을 보호합니다. 전투/P2P 통신은 이 TLS 터널의 범위가 아닙니다.
+- Play Metal Rage Online.bat가 보조 프로그램을 시작하고 두 TLS 연결을 확인한 뒤 게임을 엽니다. 오류나 포트 충돌 시 평문으로 우회하지 않습니다.
+- 서버 테스트 및 임시 포트 TLS 테스트를 통과했습니다. 실제 게임 UI의 전체 가입 흐름과 외부망 연결은 별도 검증이 필요합니다.
 
 ## 외부 네트워크에서 함께 플레이
 

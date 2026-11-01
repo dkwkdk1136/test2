@@ -1,5 +1,7 @@
 const NetworkClient = require('./client.js');
 const { createServer } = require('net');
+const tls = require('node:tls');
+const { loadServerTransport } = require('./security/tls-transport');
 const db = require('./database/db');
 const rooms = require('./rooms');
 const { leaveRoomAndNotify } = require('./dispatch/room/room-leave');
@@ -7,26 +9,29 @@ const { traceBattle } = require('./diagnostics/battle-network');
 const DIAGNOSTIC_OPCODES = new Set([0x00222103, 0x00420114, 0x00222131, 0x00220234]);
 let nextDiagnosticConnectionId = 1;
 
-const SERVER_PORT = 9211;
-const GAME_PORT = 30907;
-
 class DispatchServer
 {
-    constructor(name, port, services)
+    constructor(name, port, services, tlsOptions = null)
     {
         this.name = name;
         this.port = port;
-        this.server = createServer();
+        this.server = tlsOptions ? tls.createServer(tlsOptions) : createServer();
         this.services = services;
         this.clients = [];
 
-        this.server.on('connection', (socket) => this.onConnection(socket));
+        this.server.on(tlsOptions ? 'secureConnection' : 'connection', (socket) => this.onConnection(socket));
+        if (tlsOptions) this.server.on('tlsClientError', err => console.warn(`[${name}] TLS handshake rejected: ${err.code || 'invalid handshake'}`));
     }
 
     start()
     {
-        this.server.listen(this.port, '0.0.0.0', () => {
-            console.log(`[${this.name}] Listening on port: ${this.port}`);
+        return new Promise((resolve, reject) => {
+            this.server.once('error', reject);
+            this.server.listen(this.port, '0.0.0.0', () => {
+                this.server.removeListener('error', reject);
+                console.log(`[${this.name}] Listening on port: ${this.port}`);
+                resolve();
+            });
         });
     }
 
@@ -39,6 +44,10 @@ class DispatchServer
                 if (socket.destroyed || socket.writableEnded) return;
                 client.diagnosticLastPacketAt_ = Date.now();
                 client.diagnosticLastOpcode_ = `0x${type.toString(16).padStart(8, '0')}`;
+                if (this.name === 'DispatchServer' && !client.accountId_ && type !== 0x00110151) {
+                    client.disconnect();
+                    return;
+                }
                 if (this.name === 'GameServer' && !client.accountId_ && type !== 0x00110124) {
                     client.disconnect();
                     return;
@@ -89,14 +98,25 @@ class DispatchServer
 async function start()
 {
     console.log(`[release] version=${require('./package.json').version} node=${process.version}`);
-    require('./config/server').load();
+    const settings = require('./config/server').load();
+    const transport = loadServerTransport(settings, __dirname);
     require('./config/whitelist').initialize();
     await db.verifyConnection();
-    const dispatch = new DispatchServer('DispatchServer', SERVER_PORT, require('./dispatch.js'));
-    const game = new DispatchServer('GameServer', GAME_PORT, require('./game.js'));
+    await require('./auth/accounts').assertReady(db);
+    const dispatch = new DispatchServer('DispatchServer', transport.authPort, require('./dispatch.js'), transport.options);
+    const game = new DispatchServer('GameServer', transport.gamePort, require('./game.js'), transport.options);
     rooms.registerLobbyClientSource(game.clients);
-    dispatch.start();
-    game.start();
+    try {
+        await dispatch.start();
+        await game.start();
+    } catch (err) {
+        for (const service of [dispatch, game]) {
+            for (const client of service.clients) client.disconnect();
+            if (service.server.listening) service.server.close();
+        }
+        throw err;
+    }
+    console.log(transport.enabled ? '[transport] TLS 1.3 AES-256-GCM only; game clients must use the local TLS bridge' : '[transport] Legacy TCP (not TLS)');
 }
 
 if (require.main === module) {

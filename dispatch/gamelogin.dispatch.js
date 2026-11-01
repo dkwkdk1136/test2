@@ -51,8 +51,7 @@ class ZGameLoginDispatch
             return false;
 
         console.log(`[ZGameLoginDispatch] Message 0x${type.toString(16).padStart(8, '0')} (${body.length} bytes)`);
-        if (body.length > 0)
-            console.log(`[ZGameLoginDispatch] Body:`, body.toString('hex'));
+        // Game-login bodies include a bearer token; never print the bytes.
 
         switch (type)
         {

@@ -6,6 +6,17 @@ logs/
 *.log
 database/config.json
 config/server.json
+config/server.json.*.bak
+config/server.json.*.tmp
+/certs/
+/private-backup/
+/client-tls/bridge.json
+/client-tls/ca.crt
+/client-tls/runtime/
+/client-dist/
+/test/.tls-fixtures/
+/tools/client-registration/out/
+__pycache__/
 config/allowed-users.json
 static/gamefiles/*
 !static/gamefiles/decrypt.js
